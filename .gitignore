@@ -1,0 +1,26 @@
+# Dataset — never commit
+data/*.hdf5
+data/*.pkl
+data/*.tar.gz
+data/**/*.hdf5
+data/**/*.h5
+data/**/*.pkl
+data/**/*.tar.gz
+data/**/*.zip
+
+# Large generated outputs
+experiments/**/*.pth
+experiments/**/*.pt
+experiments/**/checkpoints/
+experiments/**/logs/
+*.pth           # model weights
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store

@@ -1,0 +1,101 @@
+version: "3.8"
+
+x-train-base: &train-base
+  image: amc-project-ikt:1.0
+  build: .
+  volumes:
+    - ./src:/workspace/src:ro
+    - ./data:/workspace/data:ro
+    - ./experiments:/workspace/experiments
+    - ./configs:/workspace/configs
+
+x-train-gpu: &train-gpu
+  <<: *train-base
+  environment:
+    - CUDA_VISIBLE_DEVICES=0
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  train:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn1d_quick.yaml
+
+  train_cnn1d:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn1d_quick.yaml
+
+  train_cnn_lstm:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn_lstm_quick.yaml
+
+  train_resnet1d:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/resnet1d_quick.yaml
+
+  train_cnn1d_quick:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn1d_quick.yaml
+
+  train_cnn_lstm_quick:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn_lstm_quick.yaml
+
+  train_resnet1d_quick:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/resnet1d_quick.yaml
+
+  train_cnn1d_full:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn_baseline.yaml
+
+  train_cnn_lstm_full:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/cnn_lstm_baseline.yaml
+
+  train_resnet1d_full:
+    <<: *train-base
+    command: >
+      python -m src.train
+      --config configs/resnet1d_baseline.yaml
+
+  train_cnn1d_gpu:
+    <<: *train-gpu
+    command: >
+      python -m src.train
+      --config configs/cnn_baseline.yaml
+
+  train_cnn_lstm_gpu:
+    <<: *train-gpu
+    command: >
+      python -m src.train
+      --config configs/cnn_lstm_baseline.yaml
+
+  train_resnet1d_gpu:
+    <<: *train-gpu
+    command: >
+      python -m src.train
+      --config configs/resnet1d_baseline.yaml

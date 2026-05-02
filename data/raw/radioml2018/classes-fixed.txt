@@ -1,0 +1,56 @@
+"""
+ ____________________________________
+|             Classes.txt            |
+|____________________________________|
+|idx |    Original   |     Fixed     |
+|  0 |  '32PSK'      |  'OOK'        |
+|  1 |  '16APSK'     |  '4ASK'       |
+|  2 |  '32QAM'      |  '8ASK'       |
+|  3 |  'FM'         |  'BPSK'       |
+|  4 |  'GMSK'       |  'QPSK'       |
+|  5 |  '32APSK'     |  '8PSK'       |
+|  6 |  'OQPSK'      |  '16PSK'      |
+|  7 |  '8ASK'       |  '32PSK'      |
+|  8 |  'BPSK'       |  '16APSK'     |
+|  9 |  '8PSK'       |  '32APSK'     |
+| 10 |  'AM-SSB-SC'  |  '64APSK'     |
+| 11 |  '4ASK'       |  '128APSK'    |
+| 12 |  '16PSK'      |  '16QAM'      |
+| 13 |  '64APSK'     |  '32QAM'      |
+| 14 |  '128QAM'     |  '64QAM'      |
+| 15 |  '128APSK'    |  '128QAM'     |
+| 16 |  'AM-DSB-SC'  |  '256QAM'     |
+| 17 |  'AM-SSB-WC'  |  'AM-SSB-WC'  |
+| 18 |  '64QAM'      |  'AM-SSB-SC'  |
+| 19 |  'QPSK'       |  'AM-DSB-WC'  |
+| 20 |  '256QAM'     |  'AM-DSB-SC'  |
+| 21 |  'AM-DSB-WC'  |  'FM'         |
+| 22 |  'OOK'        |  'GMSK'       |
+| 23 |  '16QAM'      |  'OQPSK'      |
+|____|_______________|_______________|
+# """
+
+classes = ['OOK',
+           '4ASK',
+           '8ASK',
+           'BPSK',
+           'QPSK',
+           '8PSK',
+           '16PSK',
+           '32PSK',
+           '16APSK',
+           '32APSK',
+           '64APSK',
+           '128APSK',
+           '16QAM',
+           '32QAM',
+           '64QAM',
+           '128QAM',
+           '256QAM',
+           'AM-SSB-WC',
+           'AM-SSB-SC',
+           'AM-DSB-WC',
+           'AM-DSB-SC',
+           'FM',
+           'GMSK',
+           'OQPSK']

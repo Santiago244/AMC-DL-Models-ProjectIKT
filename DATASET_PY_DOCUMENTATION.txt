@@ -1,0 +1,1976 @@
+Documentation for src/dataset.py
+================================
+
+Purpose of this file
+--------------------
+
+The file src/dataset.py contains all dataset-related code for the RadioML
+2018.01A Automatic Modulation Classification project.
+
+Its main responsibilities are:
+
+1. Define the 24 modulation class names.
+2. Read labels and SNR values from the RadioML HDF5 file.
+3. Create train/validation/test split index files.
+4. Load split indices for later experiments.
+5. Optionally limit split sizes for quick experiments.
+6. Provide a PyTorch Dataset class that reads I/Q samples lazily from HDF5.
+7. Build PyTorch DataLoader objects for training, validation, and testing.
+8. Provide a command-line interface for creating split files.
+
+The most important idea is that the full RadioML signal array is very large.
+The project does not load the entire X array into memory. Instead, it stores
+only row indices for train/validation/test splits, then loads each sample from
+the HDF5 file only when PyTorch asks for it.
+
+
+RadioML 2018.01A dataset structure
+----------------------------------
+
+The raw dataset file is:
+
+    data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5
+
+It contains three main arrays:
+
+    X: signal samples
+    Y: modulation labels
+    Z: SNR values
+
+Expected shapes:
+
+    X: (2555904, 1024, 2)
+    Y: (2555904, 24)
+    Z: (2555904,)
+
+Meaning:
+
+    2555904 = number of examples
+    1024    = number of time samples per signal
+    2       = I and Q channels
+    24      = modulation classes
+
+For a single index i:
+
+    X[i] = one I/Q signal sample
+    Y[i] = one-hot modulation label
+    Z[i] = SNR value in dB
+
+Example:
+
+    X[100] might contain one noisy QPSK signal.
+    Y[100] tells the project that the signal belongs to QPSK.
+    Z[100] tells the project the SNR, for example 10 dB.
+
+
+Imports
+-------
+
+    from __future__ import annotations
+
+This postpones evaluation of type annotations. It allows annotations such as
+h5py.File | None without requiring all referenced types to be evaluated
+immediately at import time.
+
+    import argparse
+
+argparse is Python's standard library module for command-line interfaces. This
+file uses it to allow running:
+
+    python -m src.dataset
+
+and passing options such as:
+
+    --hdf5-path
+    --output
+    --train-split
+    --val-split
+    --test-split
+    --random-seed
+
+    import json
+
+json is used to store human-readable metadata inside the split .npz file. The
+metadata includes things such as split ratios, random seed, number of samples,
+and SNR levels.
+
+    from pathlib import Path
+
+Path is a modern Python object for file paths. Instead of treating paths only
+as strings, Path provides methods such as:
+
+    Path("some/folder")
+    path.parent
+    path.mkdir(...)
+
+    from typing import Any
+
+Any is used in type hints when a value can have different possible types. In
+this file, config dictionaries are annotated as dict[str, Any] because their
+values can be strings, integers, booleans, floats, or nested dictionaries.
+
+    import h5py
+
+h5py is used to open and read the RadioML HDF5 file. HDF5 is a file format
+commonly used for large numerical datasets.
+
+    import numpy as np
+
+NumPy is used for array processing, splitting indices, reading labels, finding
+unique SNR values, random sampling, and saving compressed split files.
+
+    import torch
+
+PyTorch is used to create tensors returned by the dataset.
+
+    from torch.utils.data import DataLoader, Dataset
+
+Dataset is the base class used to define a custom PyTorch dataset.
+DataLoader creates batches from a Dataset and handles shuffling, batching, and
+parallel loading.
+
+
+Global constants
+----------------
+
+CLASSES
+~~~~~~~
+
+    CLASSES = [
+        "OOK",
+        "4ASK",
+        ...
+        "PM",
+    ]
+
+This list defines the 24 modulation classes in the same order as the dataset
+labels.
+
+The index in the list is the class number used by the model.
+
+Examples:
+
+    0  -> OOK
+    1  -> 4ASK
+    2  -> 8ASK
+    3  -> BPSK
+    4  -> QPSK
+    23 -> PM
+
+When the model outputs class index 4, the predicted modulation is QPSK.
+
+
+DEFAULT_HDF5_PATH
+~~~~~~~~~~~~~~~~~
+
+    DEFAULT_HDF5_PATH = Path("data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5")
+
+This is the default location of the raw RadioML HDF5 dataset.
+
+Library methods used:
+
+    Path(...)
+
+Path creates a path object. It does not open the file. It only represents the
+location.
+
+
+DEFAULT_SPLIT_PATH
+~~~~~~~~~~~~~~~~~~
+
+    DEFAULT_SPLIT_PATH = Path("data/splits/radioml2018a_seed42_60_20_20.npz")
+
+This is the default location where the train/validation/test split indices are
+stored.
+
+The .npz file does not contain signal data. It contains only arrays of row
+indices:
+
+    train_idx
+    val_idx
+    test_idx
+    metadata
+
+
+Function: _validate_split_ratios
+--------------------------------
+
+Signature:
+
+    def _validate_split_ratios(
+        train_split: float,
+        val_split: float,
+        test_split: float,
+    ) -> None:
+
+Purpose:
+
+This helper checks that the train/validation/test split ratios are valid.
+
+Example valid split:
+
+    train_split = 0.6
+    val_split   = 0.2
+    test_split  = 0.2
+
+The total is:
+
+    0.6 + 0.2 + 0.2 = 1.0
+
+The function checks two conditions:
+
+1. The three split ratios must sum to 1.0.
+2. All split ratios must be greater than 0.
+
+Code:
+
+    total = train_split + val_split + test_split
+
+This adds the three floating-point values.
+
+    if not np.isclose(total, 1.0):
+
+NumPy method:
+
+    np.isclose(a, b)
+
+This checks whether two floating-point numbers are approximately equal.
+Floating-point arithmetic can have tiny precision errors, so this is better
+than using:
+
+    total == 1.0
+
+Example:
+
+    np.isclose(0.999999999, 1.0) -> True
+
+If the total is not close to 1.0, the function raises:
+
+    raise ValueError(...)
+
+Python exception:
+
+    ValueError
+
+This is used when a function receives a value that has the correct type but an
+invalid value.
+
+The formatted string:
+
+    f"(got {total:.6f})"
+
+prints the total with 6 digits after the decimal point.
+
+Then the function checks:
+
+    if min(train_split, val_split, test_split) <= 0:
+
+Python built-in:
+
+    min(...)
+
+This returns the smallest value. If the smallest split is less than or equal to
+zero, at least one split is invalid.
+
+The function returns None because it is only a validation function. If
+something is wrong, it raises an error. If everything is correct, it silently
+finishes.
+
+
+Function: read_labels_and_snr
+-----------------------------
+
+Signature:
+
+    def read_labels_and_snr(
+        hdf5_path: str | Path,
+    ) -> tuple[np.ndarray, np.ndarray]:
+
+Purpose:
+
+This function reads only the labels and SNR values from the HDF5 file.
+
+It does not read the full X array, because X is very large.
+
+Input:
+
+    hdf5_path
+
+Path to the HDF5 file.
+
+Output:
+
+    y
+    z
+
+Where:
+
+    y = integer modulation labels, shape (N,)
+    z = SNR values, shape (N,)
+
+Code:
+
+    with h5py.File(hdf5_path, "r") as f:
+
+h5py method:
+
+    h5py.File(path, mode)
+
+This opens an HDF5 file.
+
+Mode:
+
+    "r" = read-only mode
+
+The with statement is a context manager. It automatically closes the HDF5 file
+after the block finishes, even if an error occurs.
+
+Inside the file:
+
+    f["Y"]
+
+accesses the dataset named "Y".
+
+    f["Y"][:]
+
+The [:] means "read all rows". For Y, this loads all labels into memory.
+This is acceptable because Y is much smaller than X.
+
+    np.argmax(f["Y"][:], axis=1)
+
+NumPy method:
+
+    np.argmax(array, axis=1)
+
+This returns the index of the maximum value along axis 1.
+
+Because Y is one-hot encoded, argmax converts one-hot labels into integer
+class labels.
+
+Example:
+
+    [0, 0, 0, 1, 0] -> 3
+
+    .astype(np.int64)
+
+NumPy method:
+
+    array.astype(dtype)
+
+This converts the array data type. Here it converts labels to 64-bit integers.
+PyTorch classification labels are usually long integers, so this is a sensible
+format.
+
+    .reshape(-1)
+
+NumPy method:
+
+    array.reshape(shape)
+
+The value -1 means "infer this dimension automatically". This makes sure the
+array is flat, with shape:
+
+    (N,)
+
+Then:
+
+    z = f["Z"][:].reshape(-1)
+
+reads all SNR values and flattens them.
+
+Finally:
+
+    return y, z
+
+The function returns labels and SNRs, but not the signal samples.
+
+
+Function: stratified_train_val_test_split
+-----------------------------------------
+
+Signature:
+
+    def stratified_train_val_test_split(
+        indices: np.ndarray,
+        stratify_key: np.ndarray,
+        train_split: float,
+        val_split: float,
+        test_split: float,
+        random_seed: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+Purpose:
+
+This function creates train/validation/test splits while preserving the
+distribution of groups.
+
+In this project, the groups are usually class+SNR combinations.
+
+For example:
+
+    OOK at -20 dB
+    OOK at -18 dB
+    QPSK at 0 dB
+    256QAM at 30 dB
+
+Each group is split separately, then all group pieces are combined. This keeps
+the train/validation/test splits balanced.
+
+Inputs:
+
+    indices
+
+Array of all row numbers in the dataset.
+
+Example:
+
+    [0, 1, 2, 3, ..., N-1]
+
+    stratify_key
+
+Array with one group identifier for each sample.
+
+If two samples have the same stratify_key, they belong to the same group.
+
+    train_split, val_split, test_split
+
+Fractions for splitting each group.
+
+    random_seed
+
+Seed for reproducible random shuffling.
+
+Code:
+
+    rng = np.random.default_rng(random_seed)
+
+NumPy method:
+
+    np.random.default_rng(seed)
+
+This creates a modern NumPy random number generator.
+
+Using a seed makes the result reproducible. If the same seed and same data are
+used, the same split is created again.
+
+    train_parts: list[np.ndarray] = []
+    val_parts: list[np.ndarray] = []
+    test_parts: list[np.ndarray] = []
+
+These lists temporarily store split pieces for each group.
+
+Then:
+
+    for key in np.unique(stratify_key):
+
+NumPy method:
+
+    np.unique(array)
+
+This returns all unique values in the array.
+
+If stratify_key represents class+SNR groups, this loop processes one class+SNR
+group at a time.
+
+Inside the loop:
+
+    group_indices = indices[stratify_key == key].copy()
+
+Important NumPy operations:
+
+    stratify_key == key
+
+This creates a boolean mask. It is True where the sample belongs to the current
+group.
+
+Example:
+
+    [False, True, False, True]
+
+    indices[mask]
+
+This selects only indices where the mask is True.
+
+    .copy()
+
+This creates a separate copy of the selected indices. That is useful because
+the code then shuffles the group indices.
+
+    rng.shuffle(group_indices)
+
+NumPy random method:
+
+    rng.shuffle(array)
+
+This shuffles the array in place. "In place" means it modifies the existing
+array instead of returning a new one.
+
+Then:
+
+    n = len(group_indices)
+
+Python built-in:
+
+    len(...)
+
+Returns the number of elements in the current group.
+
+    n_test = int(round(n * test_split))
+    n_val = int(round(n * val_split))
+
+Python built-ins:
+
+    round(...)
+    int(...)
+
+round computes the nearest integer value. int converts it to an integer type.
+
+Then the shuffled group is split:
+
+    test_parts.append(group_indices[:n_test])
+
+This takes the first n_test indices for the test split.
+
+List method:
+
+    list.append(value)
+
+Adds one item to the end of a list.
+
+Slicing:
+
+    group_indices[:n_test]
+
+Means "from the start up to n_test, not including n_test".
+
+Then:
+
+    val_parts.append(group_indices[n_test : n_test + n_val])
+
+This takes the next n_val samples for validation.
+
+Then:
+
+    train_parts.append(group_indices[n_test + n_val :])
+
+This takes all remaining samples for training.
+
+After all groups are processed:
+
+    train_idx = np.concatenate(train_parts)
+    val_idx = np.concatenate(val_parts)
+    test_idx = np.concatenate(test_parts)
+
+NumPy method:
+
+    np.concatenate(list_of_arrays)
+
+This joins many arrays into one array.
+
+Then:
+
+    rng.shuffle(train_idx)
+    rng.shuffle(val_idx)
+    rng.shuffle(test_idx)
+
+This shuffles the final train, validation, and test arrays so that samples from
+the same group are not kept next to each other.
+
+Finally:
+
+    return train_idx, val_idx, test_idx
+
+
+Function: create_split_indices
+------------------------------
+
+Signature:
+
+    def create_split_indices(
+        hdf5_path: str | Path,
+        output_path: str | Path = DEFAULT_SPLIT_PATH,
+        train_split: float = 0.6,
+        val_split: float = 0.2,
+        test_split: float = 0.2,
+        random_seed: int = 42,
+        stratify_by_snr: bool = True,
+    ) -> Path:
+
+Purpose:
+
+This is the main function for creating a split file.
+
+It reads labels and SNRs, creates train/validation/test row indices, and saves
+them to a compressed .npz file.
+
+It does not save signal samples.
+
+Inputs:
+
+    hdf5_path
+
+Path to the RadioML HDF5 file.
+
+    output_path
+
+Where the split .npz file should be saved.
+
+    train_split, val_split, test_split
+
+Split ratios.
+
+    random_seed
+
+Seed for reproducible splitting.
+
+    stratify_by_snr
+
+If True, splits are balanced by modulation class and SNR.
+If False, splits are balanced only by modulation class.
+
+Step 1:
+
+    _validate_split_ratios(train_split, val_split, test_split)
+
+This checks that the split ratios are valid before doing any work.
+
+Step 2:
+
+    hdf5_path = Path(hdf5_path)
+    output_path = Path(output_path)
+
+Path method:
+
+    Path(...)
+
+Converts strings or existing Path objects into Path objects.
+
+Step 3:
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+Path property:
+
+    output_path.parent
+
+Returns the directory containing the file.
+
+Example:
+
+    Path("data/splits/file.npz").parent -> Path("data/splits")
+
+Path method:
+
+    mkdir(...)
+
+Creates a directory.
+
+Arguments:
+
+    parents=True
+
+Creates parent directories too if they do not exist.
+
+    exist_ok=True
+
+Does not raise an error if the directory already exists.
+
+Step 4:
+
+    y, z = read_labels_and_snr(hdf5_path)
+
+This reads integer labels and SNR values.
+
+Step 5:
+
+    if len(y) != len(z):
+        raise ValueError(...)
+
+This verifies that each label has a corresponding SNR value.
+
+Step 6:
+
+    indices = np.arange(len(y), dtype=np.int64)
+
+NumPy method:
+
+    np.arange(stop, dtype=...)
+
+Creates an array of numbers:
+
+    [0, 1, 2, ..., stop - 1]
+
+If there are N samples, this creates all row indices from 0 to N-1.
+
+Step 7:
+
+    if stratify_by_snr:
+        snr_levels, snr_codes = np.unique(z, return_inverse=True)
+        stratify_key = y * len(snr_levels) + snr_codes.reshape(-1)
+    else:
+        snr_levels = np.unique(z)
+        stratify_key = y
+
+NumPy method:
+
+    np.unique(z, return_inverse=True)
+
+With return_inverse=True, NumPy returns two things:
+
+    snr_levels = sorted unique SNR values
+    snr_codes  = integer code for each sample's SNR
+
+Example:
+
+    z = [-20, -20, -18, -16]
+
+Then:
+
+    snr_levels = [-20, -18, -16]
+    snr_codes  = [0, 0, 1, 2]
+
+The line:
+
+    stratify_key = y * len(snr_levels) + snr_codes.reshape(-1)
+
+creates a unique group ID for each class+SNR combination.
+
+Example:
+
+    number of SNR levels = 26
+    class y = 4
+    snr code = 10
+
+Then:
+
+    stratify_key = 4 * 26 + 10 = 114
+
+All samples with class 4 and SNR code 10 get the same key.
+
+If stratify_by_snr is False:
+
+    stratify_key = y
+
+Then the split is balanced only by modulation class, not by SNR.
+
+Step 8:
+
+    train_idx, val_idx, test_idx = stratified_train_val_test_split(...)
+
+This creates the actual split index arrays.
+
+Step 9:
+
+    metadata = {...}
+
+This dictionary describes the split.
+
+Python dictionary:
+
+    key: value
+
+The metadata includes:
+
+    source_hdf5
+    num_samples
+    train_split
+    val_split
+    test_split
+    random_seed
+    stratify_by
+    train_samples
+    val_samples
+    test_samples
+    snr_levels
+
+Conversions used:
+
+    int(...)
+    float(...)
+    str(...)
+
+These convert NumPy values into normal Python values so they can be stored as
+JSON.
+
+    snr_levels.tolist()
+
+NumPy method:
+
+    array.tolist()
+
+Converts a NumPy array into a Python list.
+
+Step 10:
+
+    np.savez_compressed(
+        output_path,
+        train_idx=np.sort(train_idx),
+        val_idx=np.sort(val_idx),
+        test_idx=np.sort(test_idx),
+        metadata=json.dumps(metadata, indent=2),
+    )
+
+NumPy method:
+
+    np.savez_compressed(file, name1=array1, name2=array2, ...)
+
+Saves multiple arrays into one compressed .npz file.
+
+This project saves:
+
+    train_idx
+    val_idx
+    test_idx
+    metadata
+
+NumPy method:
+
+    np.sort(array)
+
+Sorts the indices before saving.
+
+Sorting can improve HDF5 read locality because nearby row indices are closer
+together in the file. The training DataLoader still shuffles training samples
+later, so sorting here does not remove training randomness.
+
+json method:
+
+    json.dumps(metadata, indent=2)
+
+Converts a Python dictionary to a JSON-formatted string. indent=2 makes it
+human-readable.
+
+Step 11:
+
+    return output_path
+
+The function returns the location of the saved split file.
+
+
+Function: load_split_indices
+----------------------------
+
+Signature:
+
+    def load_split_indices(
+        split_path: str | Path = DEFAULT_SPLIT_PATH,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+Purpose:
+
+This function loads train/validation/test row indices from a saved .npz split
+file.
+
+Code:
+
+    split = np.load(split_path)
+
+NumPy method:
+
+    np.load(file)
+
+Loads arrays from .npy or .npz files.
+
+For a .npz file, the returned object behaves like a dictionary:
+
+    split["train_idx"]
+    split["val_idx"]
+    split["test_idx"]
+
+Then:
+
+    return split["train_idx"], split["val_idx"], split["test_idx"]
+
+This returns three NumPy arrays of HDF5 row indices.
+
+
+Function: limit_indices
+-----------------------
+
+Signature:
+
+    def limit_indices(
+        indices: np.ndarray,
+        max_samples: int | None,
+        random_seed: int,
+    ) -> np.ndarray:
+
+Purpose:
+
+This function returns either the full index array or a deterministic random
+subset.
+
+It is used for quick experiments.
+
+Example:
+
+    Full train split: 1,533,542 samples
+    max_train_samples: 60,000
+
+The function selects 60,000 row indices from the full training split.
+
+Code:
+
+    if max_samples is None or max_samples <= 0 or max_samples >= len(indices):
+        return indices
+
+This means no limiting is applied if:
+
+    max_samples is None
+    max_samples <= 0
+    max_samples is larger than the available number of indices
+
+Then:
+
+    rng = np.random.default_rng(random_seed)
+
+Creates a reproducible random generator.
+
+    selected = rng.choice(indices, size=max_samples, replace=False)
+
+NumPy random method:
+
+    rng.choice(array, size=..., replace=...)
+
+Randomly selects values from an array.
+
+Arguments:
+
+    size=max_samples
+
+Select this many samples.
+
+    replace=False
+
+Do not select the same index twice.
+
+Then:
+
+    return np.sort(selected)
+
+Returns the selected subset in sorted order.
+
+
+Class: RadioMLDataset
+---------------------
+
+Signature:
+
+    class RadioMLDataset(Dataset):
+
+Purpose:
+
+This is a custom PyTorch Dataset for the RadioML HDF5 file.
+
+It allows PyTorch to request samples one at a time using:
+
+    dataset[idx]
+
+The dataset returns:
+
+    x
+    y
+    snr
+
+Where:
+
+    x   = I/Q tensor, shape (2, 1024)
+    y   = class label tensor
+    snr = SNR tensor
+
+It is memory-efficient because it does not load the full HDF5 file into RAM.
+
+
+Method: RadioMLDataset.__init__
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Signature:
+
+    def __init__(
+        self,
+        hdf5_path: str | Path,
+        indices: np.ndarray,
+        sample_normalize: bool = False,
+    ) -> None:
+
+Purpose:
+
+Initializes the dataset object.
+
+Inputs:
+
+    hdf5_path
+
+Path to the raw HDF5 file.
+
+    indices
+
+The row indices that this dataset should use.
+
+For example:
+
+    train_dataset uses train_idx
+    val_dataset uses val_idx
+    test_dataset uses test_idx
+
+    sample_normalize
+
+If True, each sample is standardized before being returned.
+
+Code:
+
+    self.hdf5_path = str(hdf5_path)
+
+Converts the path to a string for h5py.
+
+    self.indices = np.asarray(indices, dtype=np.int64)
+
+NumPy method:
+
+    np.asarray(value, dtype=...)
+
+Converts the input into a NumPy array if it is not already one.
+
+This ensures indices are stored as 64-bit integers.
+
+    self.sample_normalize = sample_normalize
+
+Stores whether normalization should be applied in __getitem__.
+
+    self._file: h5py.File | None = None
+
+The HDF5 file is not opened immediately. It is opened lazily later.
+
+This matters because PyTorch DataLoader can use multiple workers. Each worker
+should open its own HDF5 file handle.
+
+
+Method: RadioMLDataset.__len__
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Signature:
+
+    def __len__(self) -> int:
+
+Purpose:
+
+Returns the number of samples in this dataset.
+
+PyTorch DataLoader uses this to know how many samples are available.
+
+Code:
+
+    return len(self.indices)
+
+If train_idx contains 60,000 indices, then:
+
+    len(train_dataset) -> 60000
+
+
+Property: RadioMLDataset.file
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Signature:
+
+    @property
+    def file(self) -> h5py.File:
+
+Purpose:
+
+Opens the HDF5 file lazily and returns the file handle.
+
+The @property decorator means you access it like an attribute:
+
+    self.file
+
+instead of:
+
+    self.file()
+
+Code:
+
+    if self._file is None:
+        self._file = h5py.File(self.hdf5_path, "r")
+
+If the file has not been opened yet, open it in read-only mode.
+
+Then:
+
+    return self._file
+
+This lets __getitem__ use:
+
+    self.file["X"]
+    self.file["Y"]
+    self.file["Z"]
+
+
+Method: RadioMLDataset.__getitem__
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Signature:
+
+    def __getitem__(
+        self,
+        idx: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+Purpose:
+
+Loads one sample from the HDF5 file and returns it as PyTorch tensors.
+
+PyTorch calls this method automatically when building batches.
+
+Input:
+
+    idx
+
+The local index inside this dataset.
+
+Important distinction:
+
+    idx        = position inside train/val/test subset
+    sample_idx = actual row number inside the full HDF5 file
+
+Code:
+
+    sample_idx = int(self.indices[idx])
+
+This converts the selected split index into a normal Python integer.
+
+Then:
+
+    x = self.file["X"][sample_idx].astype(np.float32).T
+
+This reads one signal sample.
+
+Breakdown:
+
+    self.file
+
+Gets the HDF5 file handle.
+
+    self.file["X"]
+
+Gets the HDF5 dataset named X.
+
+    self.file["X"][sample_idx]
+
+Reads one row from X.
+
+Original shape:
+
+    (1024, 2)
+
+This means:
+
+    1024 time samples
+    2 I/Q components
+
+    .astype(np.float32)
+
+Converts the sample to 32-bit floating point. PyTorch neural networks normally
+use float32.
+
+    .T
+
+NumPy property:
+
+    array.T
+
+Returns the transpose of the array.
+
+Shape changes from:
+
+    (1024, 2)
+
+to:
+
+    (2, 1024)
+
+This is required because PyTorch Conv1d expects:
+
+    (channels, sequence_length)
+
+For a batch, the DataLoader creates:
+
+    (batch_size, channels, sequence_length)
+
+In this project:
+
+    (batch_size, 2, 1024)
+
+Optional normalization:
+
+    if self.sample_normalize:
+        std = x.std()
+        if std > 0:
+            x = (x - x.mean()) / std
+
+NumPy methods:
+
+    x.std()
+
+Computes the standard deviation of all values in the sample.
+
+    x.mean()
+
+Computes the mean of all values in the sample.
+
+The formula:
+
+    x = (x - x.mean()) / std
+
+standardizes the sample to approximately zero mean and unit standard deviation.
+
+The check:
+
+    if std > 0:
+
+prevents division by zero.
+
+Then the label is loaded:
+
+    y = int(np.argmax(self.file["Y"][sample_idx]))
+
+Breakdown:
+
+    self.file["Y"][sample_idx]
+
+Reads the one-hot label vector for this sample.
+
+    np.argmax(...)
+
+Finds the position of the maximum value. Since the label is one-hot, this
+returns the class index.
+
+    int(...)
+
+Converts the NumPy integer to a Python integer.
+
+Then the SNR is loaded:
+
+    snr = float(np.asarray(self.file["Z"][sample_idx]).reshape(-1)[0])
+
+Breakdown:
+
+    self.file["Z"][sample_idx]
+
+Reads the SNR value for this sample.
+
+    np.asarray(...)
+
+Converts the value into a NumPy array. This makes the next reshape operation
+safe even if h5py returns a scalar-like object.
+
+    .reshape(-1)
+
+Flattens it into a one-dimensional array.
+
+    [0]
+
+Gets the first value.
+
+    float(...)
+
+Converts it to a normal Python float.
+
+Finally, the method returns:
+
+    return (
+        torch.from_numpy(x),
+        torch.tensor(y, dtype=torch.long),
+        torch.tensor(snr, dtype=torch.float32),
+    )
+
+PyTorch methods:
+
+    torch.from_numpy(x)
+
+Creates a PyTorch tensor that shares memory with the NumPy array when possible.
+This is efficient.
+
+    torch.tensor(y, dtype=torch.long)
+
+Creates a tensor from the integer label.
+
+The dtype torch.long is required by PyTorch CrossEntropyLoss, which expects
+class labels as integer class indices, not one-hot vectors.
+
+    torch.tensor(snr, dtype=torch.float32)
+
+Creates a float32 tensor for the SNR value.
+
+Returned sample:
+
+    x   -> shape (2, 1024), dtype float32
+    y   -> scalar integer tensor, dtype long
+    snr -> scalar float tensor, dtype float32
+
+
+Method: RadioMLDataset.close
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Signature:
+
+    def close(self) -> None:
+
+Purpose:
+
+Closes the HDF5 file handle if it is open.
+
+Code:
+
+    if self._file is not None:
+        self._file.close()
+        self._file = None
+
+h5py method:
+
+    file.close()
+
+Closes the open HDF5 file.
+
+Then self._file is set back to None, so it can be reopened later if needed.
+
+
+Method: RadioMLDataset.__del__
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Signature:
+
+    def __del__(self) -> None:
+
+Purpose:
+
+Destructor method. Python calls this when the dataset object is being
+destroyed.
+
+Code:
+
+    self.close()
+
+This helps make sure that the HDF5 file handle is closed.
+
+Important note:
+
+__del__ is a cleanup backup. It is useful, but in complex multiprocessing
+settings, explicit cleanup is still better when possible.
+
+
+Function: build_dataloaders
+---------------------------
+
+Signature:
+
+    def build_dataloaders(
+        config: dict[str, Any],
+    ) -> tuple[DataLoader, DataLoader, DataLoader]:
+
+Purpose:
+
+This function creates the train, validation, and test DataLoaders used by
+train.py and evaluate.py.
+
+It is the main bridge between the YAML config and PyTorch training.
+
+Input:
+
+    config
+
+A dictionary loaded from a YAML experiment config.
+
+Expected structure:
+
+    config["data"]
+    config["training"]
+
+Example data section:
+
+    data:
+      hdf5_path: "data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5"
+      split_path: "data/splits/radioml2018a_seed42_60_20_20.npz"
+      random_seed: 42
+      sample_normalize: false
+      max_train_samples: 60000
+      max_val_samples: 12000
+      max_test_samples: 12000
+
+Example training section:
+
+    training:
+      batch_size: 256
+      num_workers: 0
+      pin_memory: false
+
+Step 1:
+
+    data_config = config["data"]
+    training_config = config["training"]
+
+Dictionary indexing:
+
+    config["data"]
+
+Gets the data subsection.
+
+Step 2:
+
+    train_idx, val_idx, test_idx = load_split_indices(data_config["split_path"])
+
+Loads the split file.
+
+Step 3:
+
+    hdf5_path = data_config["hdf5_path"]
+
+Gets the raw dataset path from the config.
+
+    sample_normalize = bool(data_config.get("sample_normalize", False))
+
+Dictionary method:
+
+    dict.get(key, default)
+
+Gets a value if the key exists. If the key does not exist, returns the default.
+
+Here, if sample_normalize is missing, it defaults to False.
+
+    bool(...)
+
+Converts the value to a boolean.
+
+    random_seed = int(data_config.get("random_seed", 42))
+
+Gets the random seed. If missing, uses 42.
+
+Step 4:
+
+    train_idx = limit_indices(train_idx, data_config.get("max_train_samples"), random_seed)
+    val_idx = limit_indices(val_idx, data_config.get("max_val_samples"), random_seed + 1)
+    test_idx = limit_indices(test_idx, data_config.get("max_test_samples"), random_seed + 2)
+
+This optionally reduces the dataset sizes for quick experiments.
+
+Different seeds are used for train, validation, and test subsets:
+
+    train: random_seed
+    val:   random_seed + 1
+    test:  random_seed + 2
+
+Step 5:
+
+    batch_size = int(training_config.get("batch_size", 512))
+    num_workers = int(training_config.get("num_workers", 0))
+    pin_memory = bool(training_config.get("pin_memory", True))
+
+These are PyTorch DataLoader settings.
+
+    batch_size
+
+Number of samples per batch.
+
+Example:
+
+    batch_size = 256
+
+Then each training batch has:
+
+    x   shape (256, 2, 1024)
+    y   shape (256,)
+    snr shape (256,)
+
+    num_workers
+
+Number of worker processes used for data loading.
+
+    0 = load data in the main process
+    2 or more = use separate worker processes
+
+For HDF5, num_workers=0 is often safest on Windows. Higher values can improve
+speed but require careful HDF5 handling. This project opens HDF5 lazily per
+dataset object, which is better than opening one shared handle at construction
+time.
+
+    pin_memory
+
+If True, DataLoader places tensors in pinned CPU memory. This can speed up
+CPU-to-GPU transfer when training on CUDA.
+
+Step 6:
+
+    train_dataset = RadioMLDataset(hdf5_path, train_idx, sample_normalize=sample_normalize)
+    val_dataset = RadioMLDataset(hdf5_path, val_idx, sample_normalize=sample_normalize)
+    test_dataset = RadioMLDataset(hdf5_path, test_idx, sample_normalize=sample_normalize)
+
+Creates one Dataset object for each split.
+
+Step 7:
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+
+PyTorch class:
+
+    DataLoader(dataset, ...)
+
+Wraps a Dataset and creates batches.
+
+Important arguments:
+
+    dataset
+
+The dataset object to sample from.
+
+    batch_size
+
+How many samples per batch.
+
+    shuffle=True
+
+Training data is shuffled every epoch. This helps stochastic gradient descent
+learn better and avoids order effects.
+
+    num_workers
+
+How many subprocesses to use for loading data.
+
+    pin_memory
+
+Whether to use pinned CPU memory for faster GPU transfer.
+
+Validation and test loaders:
+
+    shuffle=False
+
+Evaluation does not need shuffling. Keeping a stable order makes debugging and
+reproducibility easier.
+
+Step 8:
+
+    return train_loader, val_loader, test_loader
+
+These loaders are used in:
+
+    src/train.py
+    src/evaluate.py
+
+
+Function: _build_parser
+-----------------------
+
+Signature:
+
+    def _build_parser() -> argparse.ArgumentParser:
+
+Purpose:
+
+Builds the command-line argument parser used when running dataset.py as a
+script.
+
+Code:
+
+    parser = argparse.ArgumentParser(
+        description="Create RadioML train/val/test split indices."
+    )
+
+argparse class:
+
+    argparse.ArgumentParser(...)
+
+Creates a command-line parser.
+
+The description is shown when running:
+
+    python -m src.dataset --help
+
+Then:
+
+    parser.add_argument("--hdf5-path", default=str(DEFAULT_HDF5_PATH))
+
+argparse method:
+
+    parser.add_argument(...)
+
+Defines a command-line option.
+
+This option lets the user specify the raw HDF5 path.
+
+    default=str(DEFAULT_HDF5_PATH)
+
+If the user does not pass --hdf5-path, this default value is used.
+
+Other arguments:
+
+    --output
+
+Where to save the split .npz file.
+
+    --train-split
+
+Training split ratio. Uses type=float, so command-line text is converted to a
+float.
+
+    --val-split
+
+Validation split ratio.
+
+    --test-split
+
+Test split ratio.
+
+    --random-seed
+
+Random seed. Uses type=int.
+
+    --stratify-modulation-only
+
+This uses:
+
+    action="store_true"
+
+Meaning:
+
+    If the flag is present, the value becomes True.
+    If the flag is absent, the value is False.
+
+The parser is returned:
+
+    return parser
+
+
+Function: main
+--------------
+
+Signature:
+
+    def main() -> None:
+
+Purpose:
+
+Command-line entry point for creating a split file.
+
+It runs when this file is executed as a script:
+
+    python -m src.dataset
+
+Step 1:
+
+    args = _build_parser().parse_args()
+
+argparse method:
+
+    parser.parse_args()
+
+Reads command-line arguments and returns an object where arguments can be
+accessed as attributes.
+
+Examples:
+
+    args.hdf5_path
+    args.output
+    args.train_split
+    args.val_split
+    args.test_split
+    args.random_seed
+    args.stratify_modulation_only
+
+Step 2:
+
+    split_path = create_split_indices(
+        hdf5_path=args.hdf5_path,
+        output_path=args.output,
+        train_split=args.train_split,
+        val_split=args.val_split,
+        test_split=args.test_split,
+        random_seed=args.random_seed,
+        stratify_by_snr=not args.stratify_modulation_only,
+    )
+
+This creates the split file.
+
+Important logic:
+
+    stratify_by_snr=not args.stratify_modulation_only
+
+If the user does not pass --stratify-modulation-only:
+
+    args.stratify_modulation_only = False
+    stratify_by_snr = True
+
+So the default is class+SNR stratification.
+
+If the user passes --stratify-modulation-only:
+
+    args.stratify_modulation_only = True
+    stratify_by_snr = False
+
+Then the split is balanced only by modulation class.
+
+Step 3:
+
+    split = np.load(split_path)
+
+Loads the saved .npz file.
+
+Step 4:
+
+    metadata = json.loads(str(split["metadata"]))
+
+json method:
+
+    json.loads(string)
+
+Converts a JSON string back into a Python dictionary.
+
+    str(split["metadata"])
+
+Converts the loaded metadata value into a normal string.
+
+Step 5:
+
+    print(f"Saved split indices to: {split_path}")
+    print(json.dumps(metadata, indent=2))
+
+Python function:
+
+    print(...)
+
+Writes output to the terminal.
+
+json.dumps(metadata, indent=2) formats the metadata nicely.
+
+
+Script guard
+------------
+
+    if __name__ == "__main__":
+        main()
+
+Purpose:
+
+This means:
+
+    If this file is run directly as a script, call main().
+    If this file is imported by another file, do not call main().
+
+Examples:
+
+Running directly:
+
+    python -m src.dataset
+
+Then __name__ is "__main__", so main() runs.
+
+Importing:
+
+    from src.dataset import build_dataloaders
+
+Then __name__ is "src.dataset", so main() does not run.
+
+
+How this file is used by training
+---------------------------------
+
+In src/train.py, the training script calls:
+
+    train_loader, val_loader, _test_loader = build_dataloaders(config)
+
+This uses the config file to:
+
+1. Load train/validation/test indices.
+2. Optionally reduce them for quick experiments.
+3. Create RadioMLDataset objects.
+4. Create PyTorch DataLoader objects.
+
+During training, a batch has:
+
+    x:   (batch_size, 2, 1024)
+    y:   (batch_size,)
+    snr: (batch_size,)
+
+The training loop uses:
+
+    x
+    y
+
+It ignores:
+
+    snr
+
+because SNR is not an input to the model.
+
+
+How this file is used by evaluation
+-----------------------------------
+
+In src/evaluate.py, the evaluation script also calls:
+
+    _train_loader, _val_loader, test_loader = build_dataloaders(config)
+
+During evaluation, the script keeps:
+
+    x
+    y
+    snr
+
+The model predicts from x.
+
+The prediction is compared against y.
+
+The SNR value is used to calculate per-SNR accuracy.
+
+This is why __getitem__ returns SNR even though training does not use it.
+
+
+End-to-end data flow
+--------------------
+
+Step 1: Raw file
+
+    GOLD_XYZ_OSC.0001_1024.hdf5
+
+contains:
+
+    X, Y, Z
+
+Step 2: Split creation
+
+    create_split_indices(...)
+
+creates:
+
+    train_idx
+    val_idx
+    test_idx
+
+and saves them to:
+
+    data/splits/radioml2018a_seed42_60_20_20.npz
+
+Step 3: Split loading
+
+    load_split_indices(...)
+
+loads those row indices.
+
+Step 4: Dataset creation
+
+    RadioMLDataset(hdf5_path, train_idx)
+
+creates a dataset object that knows:
+
+    which file to read
+    which rows to use
+
+Step 5: Sample loading
+
+    __getitem__(idx)
+
+loads one sample:
+
+    X[sample_idx]
+    Y[sample_idx]
+    Z[sample_idx]
+
+and returns:
+
+    x, y, snr
+
+Step 6: Batching
+
+    DataLoader(...)
+
+combines many samples into one batch:
+
+    x:   (batch_size, 2, 1024)
+    y:   (batch_size,)
+    snr: (batch_size,)
+
+Step 7: Training
+
+    model(x)
+    loss(logits, y)
+
+Step 8: Evaluation
+
+    predictions = model(x).argmax(...)
+    compare predictions with y
+    group results by snr
+
+
+Important design decisions in this file
+---------------------------------------
+
+1. HDF5 is read lazily
+
+The full X array is not loaded into memory. Only one sample is loaded when
+needed.
+
+2. Split files store indices, not data
+
+The .npz split file is small because it stores only row numbers.
+
+3. Splits are stratified
+
+By default, the split preserves both class and SNR distributions.
+
+This is important for scientific evaluation because each split should contain
+similar amounts of every modulation class at every SNR.
+
+4. PyTorch receives channels-first data
+
+RadioML stores each sample as:
+
+    (1024, 2)
+
+The dataset returns:
+
+    (2, 1024)
+
+because Conv1d expects:
+
+    channels first
+
+5. SNR is returned even though it is not used for training
+
+SNR is required for analysis:
+
+    accuracy per SNR
+    low/mid/high SNR comparison
+    SNR-vs-accuracy plots
+
+
+Things to improve later
+-----------------------
+
+The current sample_normalize option uses standardization:
+
+    x = (x - x.mean()) / x.std()
+
+For signal processing, RMS normalization may be more meaningful:
+
+    rms = sqrt(mean(x ** 2) + epsilon)
+    x = x / rms
+
+Possible future input feature variants:
+
+    I, Q
+    I, Q, amplitude
+    I, Q, amplitude, sin(phase), cos(phase)
+
+Where:
+
+    amplitude = sqrt(I ** 2 + Q ** 2)
+    phase = atan2(Q, I)
+    sin_phase = sin(phase)
+    cos_phase = cos(phase)
+
+Those changes would also belong in RadioMLDataset.__getitem__, because that is
+where one raw sample is transformed before being returned to the model.
+

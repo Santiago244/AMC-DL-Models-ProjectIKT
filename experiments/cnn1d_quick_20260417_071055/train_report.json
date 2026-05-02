@@ -1,0 +1,48 @@
+{
+  "experiment_name": "cnn1d_quick",
+  "run_dir": "experiments/cnn1d_quick_20260417_071055",
+  "device": "cpu",
+  "model_type": "cnn1d",
+  "num_parameters": 21208,
+  "best_epoch": 4,
+  "best_val_accuracy": 0.25466666666666665,
+  "best_val_loss": 2.2477538016637166,
+  "checkpoint": "experiments/cnn1d_quick_20260417_071055/best_model.pth",
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 2.8673603900909423,
+      "train_accuracy": 0.11373333333333334,
+      "val_loss": 3.029178534825643,
+      "val_accuracy": 0.10975
+    },
+    {
+      "epoch": 2,
+      "train_loss": 2.376130514272054,
+      "train_accuracy": 0.21238333333333334,
+      "val_loss": 2.578201810836792,
+      "val_accuracy": 0.18966666666666668
+    },
+    {
+      "epoch": 3,
+      "train_loss": 2.19718967183431,
+      "train_accuracy": 0.24488333333333334,
+      "val_loss": 2.3363751039505005,
+      "val_accuracy": 0.23966666666666667
+    },
+    {
+      "epoch": 4,
+      "train_loss": 2.1413899121602378,
+      "train_accuracy": 0.25651666666666667,
+      "val_loss": 2.2477538016637166,
+      "val_accuracy": 0.25466666666666665
+    },
+    {
+      "epoch": 5,
+      "train_loss": 2.1088229871114095,
+      "train_accuracy": 0.2635166666666667,
+      "val_loss": 2.268029047648112,
+      "val_accuracy": 0.24875
+    }
+  ]
+}
