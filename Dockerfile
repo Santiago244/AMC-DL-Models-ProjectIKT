@@ -7,5 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 COPY configs/ ./configs/
+COPY data/splits/ ./data/splits/
 
 CMD ["python", "-m", "src.train", "--config", "configs/cnn_baseline.yaml"]
