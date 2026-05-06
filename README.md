@@ -377,7 +377,24 @@ Run any experiment:
 docker-compose run train python src/train.py --config configs/cnn_large_filters.yaml
 ```
 
----
+Run CNN-LSTM CUDA
+
+```bash
+python -m src.train --config configs/cnn_lstm_quick.yaml --device cuda
+```
+
+ResNet1D (CUDA):
+
+```bash
+python -m src.train --config configs/resnet1d_quick.yaml --device cuda
+```
+
+Example on how to override batch size or epochs at runtime
+
+```bash
+python -m src.train --config configs/cnn_lstm_quick.yaml --device cuda --batch-size 128 --epochs 100
+python -m src.train --config configs/resnet1d_quick.yaml --device cuda --batch-size 128 --epochs 100
+```
 
 ## Git + GitHub Workflow for Hyperparameter Tracking
 
