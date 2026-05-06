@@ -599,3 +599,42 @@ Evaluation writes:
 test_report.json
 confusion_matrix.csv
 ```
+
+---
+
+## Local NVIDIA/CUDA Setup (Verified)
+
+Environment verified on Windows (May 2026):
+
+```text
+NVIDIA-SMI 572.83
+Driver Version: 572.83
+CUDA Version: 12.8
+```
+
+Create and activate a local virtual environment:
+
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+Install PyTorch with CUDA 12.8 wheels using pip:
+
+```powershell
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+Verify CUDA is available from PyTorch:
+
+```powershell
+python -c "import torch; print(f'CUDA Available: {torch.cuda.is_available()}'); print(f'CUDA Version: {torch.version.cuda}'); print(f'PyTorch Version: {torch.__version__}')"
+```
+
+Expected output:
+
+```text
+CUDA Available: True
+CUDA Version: 12.8
+PyTorch Version: 2.11.0+cu128
+```
