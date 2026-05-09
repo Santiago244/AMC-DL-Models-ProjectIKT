@@ -50,6 +50,28 @@ def compute_report(
         mask = snrs == snr
         per_snr_accuracy[str(int(snr))] = float((predictions[mask] == targets[mask]).mean())
 
+    # Per-class precision/recall/f1 as dicts keyed by class name
+    per_class_precision: dict[str, float] = {}
+    per_class_recall: dict[str, float] = {}
+    per_class_f1: dict[str, float] = {}
+
+    for idx, class_name in enumerate(class_names):
+        per_class_precision[class_name] = float(precision[idx])
+        per_class_recall[class_name] = float(recall[idx])
+        per_class_f1[class_name] = float(f1[idx])
+
+    # False Positive Rate (FPR) per class: FP / (FP + TN)
+    # FP = predicted_total - true_positive
+    # TN = total - (TP + FN + FP) = total - (actual_total + predicted_total - true_positive)
+    total = float(confusion.sum())
+    fp = predicted_total - true_positive
+    negatives = total - actual_total  # FP + TN
+    fpr = np.divide(fp, negatives, out=np.zeros_like(fp), where=negatives > 0)
+
+    per_class_fpr: dict[str, float] = {}
+    for idx, class_name in enumerate(class_names):
+        per_class_fpr[class_name] = float(fpr[idx])
+
     return {
         "overall_accuracy": float(overall_accuracy),
         "macro_precision": float(precision.mean()),
@@ -57,6 +79,10 @@ def compute_report(
         "macro_f1": float(f1.mean()),
         "per_snr_accuracy": per_snr_accuracy,
         "per_class_accuracy": per_class_accuracy,
+        "per_class_precision": per_class_precision,
+        "per_class_recall": per_class_recall,
+        "per_class_f1": per_class_f1,
+        "per_class_fpr": per_class_fpr,
         "confusion_matrix": confusion.tolist(),
         "class_names": class_names,
     }
