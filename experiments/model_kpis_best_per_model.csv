@@ -1,0 +1,2 @@
+experiment_name,model_type,run_dir,test_samples,overall_accuracy,macro_precision,macro_recall,macro_f1,macro_fpr,best_val_accuracy,best_epoch
+cnn1d_quick,cnn1d,experiments\cnn1d_quick_20260417_071055,12000,0.25433333333333336,0.24674060754250723,0.25284725242332107,0.2116948887772634,0.03241248747628619,0.25466666666666665,4

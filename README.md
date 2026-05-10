@@ -617,6 +617,21 @@ test_report.json
 confusion_matrix.csv
 ```
 
+To compare models across runs, generate KPI tables from the saved evaluation reports:
+
+```bash
+python -m src.compare_models --experiments-dir experiments --output-dir experiments
+```
+
+This writes:
+
+```text
+model_kpis_all_runs.csv
+model_kpis_all_runs.md
+model_kpis_best_per_model.csv
+model_kpis_best_per_model.md
+```
+
 ---
 
 ## Local NVIDIA/CUDA Setup (Verified)
