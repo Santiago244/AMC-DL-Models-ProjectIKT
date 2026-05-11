@@ -377,6 +377,11 @@ Run any experiment:
 docker-compose run train python src/train.py --config configs/cnn_large_filters.yaml
 ```
 
+Run CNN1D CUDA
+```bash
+python -m src.train --config configs/cnn_baseline.yaml --device cuda
+```
+
 Run CNN-LSTM CUDA
 
 ```bash
