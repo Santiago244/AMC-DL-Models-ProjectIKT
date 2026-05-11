@@ -181,7 +181,8 @@ def train(
             optimizer=optimizer,
             desc=f"Epoch {epoch}/{epochs} train",
         )
-        # Validation is done after each epoch but without gradient updates to track best model by val accuracy and enable early stopping.
+        # Validation is done after each epoch but without gradient updates
+        # to track best model by val accuracy and enable early stopping.
         val_metrics = run_epoch(
             model,
             val_loader,

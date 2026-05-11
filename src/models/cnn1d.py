@@ -13,7 +13,7 @@ class CNN1D(nn.Module):
         input_channels: int = 2,
         filters: int = 64,
         kernel_size: int = 3,
-        dropout: float = 0.5,
+        dropout: float = 0.4,
         dense_units: int = 256,
     ) -> None:
         super().__init__()
