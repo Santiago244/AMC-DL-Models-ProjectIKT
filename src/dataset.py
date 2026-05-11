@@ -47,6 +47,29 @@ CLASSES = [
 
 DEFAULT_HDF5_PATH = Path("data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5")
 DEFAULT_SPLIT_PATH = Path("data/splits/radioml2018a_seed42_60_20_20.npz")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def resolve_project_path(path: str | Path) -> Path:
+    """Resolve config paths relative to the project root, not the launch cwd."""
+
+    path = Path(path).expanduser()
+    if path.is_absolute():
+        return path
+    return PROJECT_ROOT / path
+
+
+def require_existing_file(path: str | Path, description: str) -> Path:
+    resolved = resolve_project_path(path)
+    if not resolved.is_file():
+        raise FileNotFoundError(
+            f"{description} not found: {resolved}\n"
+            f"Configured path was: {path}\n"
+            "If this is the RadioML HDF5 dataset, place "
+            "GOLD_XYZ_OSC.0001_1024.hdf5 in data/raw/radioml2018/ "
+            "or update data.hdf5_path in the YAML config."
+        )
+    return resolved
 
 
 def _validate_split_ratios(train_split: float, val_split: float, test_split: float) -> None:
@@ -64,6 +87,7 @@ def _validate_split_ratios(train_split: float, val_split: float, test_split: flo
 def read_labels_and_snr(hdf5_path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """Read labels and SNR values without loading the full signal array."""
 
+    hdf5_path = require_existing_file(hdf5_path, "HDF5 dataset")
     with h5py.File(hdf5_path, "r") as f:
         y = np.argmax(f["Y"][:], axis=1).astype(np.int64).reshape(-1)
         z = f["Z"][:].reshape(-1)
@@ -174,6 +198,7 @@ def create_split_indices(
 
 
 def load_split_indices(split_path: str | Path = DEFAULT_SPLIT_PATH) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    split_path = require_existing_file(split_path, "Split file")
     split = np.load(split_path)
     return split["train_idx"], split["val_idx"], split["test_idx"]
 
@@ -202,7 +227,7 @@ class RadioMLDataset(Dataset):
         indices: np.ndarray,
         sample_normalize: bool = False,
     ) -> None:
-        self.hdf5_path = str(hdf5_path)
+        self.hdf5_path = str(require_existing_file(hdf5_path, "HDF5 dataset"))
         self.indices = np.asarray(indices, dtype=np.int64)
         self.sample_normalize = sample_normalize
         self._file: h5py.File | None = None
@@ -240,7 +265,10 @@ class RadioMLDataset(Dataset):
             self._file = None
 
     def __del__(self) -> None:
-        self.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 def build_dataloaders(config: dict[str, Any]) -> tuple[DataLoader, DataLoader, DataLoader]:
