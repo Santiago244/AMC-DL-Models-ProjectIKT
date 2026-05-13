@@ -1,13 +1,15 @@
-experiment_name: "cnn1d_baseline"
+experiment_name: "cnn_lstm_baseline"
 
 model:
-  type: "cnn1d"
+  type: "cnn_lstm"
   num_classes: 24
   input_channels: 2
-  filters: 64
-  kernel_size: 3
-  dropout: 0.5
-  dense_units: 256
+  conv_filters: 64
+  kernel_size: 5
+  lstm_hidden: 128
+  lstm_layers: 1
+  bidirectional: true
+  dropout: 0.4
 
 training:
   batch_size: 512

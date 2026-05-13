@@ -1,5 +1,6 @@
 # Dataset — never commit
 data/*.hdf5
+*.hdf5
 data/*.pkl
 data/*.tar.gz
 data/**/*.hdf5

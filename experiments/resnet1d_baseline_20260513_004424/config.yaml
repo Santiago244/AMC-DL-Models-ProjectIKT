@@ -1,13 +1,12 @@
-experiment_name: "cnn1d_baseline"
+experiment_name: "resnet1d_baseline"
 
 model:
-  type: "cnn1d"
+  type: "resnet1d"
   num_classes: 24
   input_channels: 2
-  filters: 64
-  kernel_size: 3
-  dropout: 0.5
-  dense_units: 256
+  base_channels: 64
+  layers: [2, 2, 2]
+  dropout: 0.4
 
 training:
   batch_size: 512

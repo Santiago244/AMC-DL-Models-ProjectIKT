@@ -385,13 +385,13 @@ python -m src.train --config configs/cnn_baseline.yaml --device cuda
 Run CNN-LSTM CUDA
 
 ```bash
-python -m src.train --config configs/cnn_lstm_quick.yaml --device cuda
+python -m src.train --config configs/cnn_lstm_baseline.yaml --device cuda
 ```
 
 ResNet1D (CUDA):
 
 ```bash
-python -m src.train --config configs/resnet1d_quick.yaml --device cuda
+python -m src.train --config configs/resnet1d_baseline.yaml --device cuda
 ```
 
 Example on how to override batch size or epochs at runtime
@@ -614,6 +614,20 @@ python -m src.evaluate \
   --config configs/cnn_baseline.yaml \
   --checkpoint experiments/<run_folder>/best_model.pth
 ```
+
+For CNN_BASELINE BATCHSIZE 512:
+```bash
+python -m src.evaluate --config configs/cnn_baseline.yaml --checkpoint experiments/cnn1d_baseline_20260511_180658/best_model.pth
+```
+For CNN_LSTM BATCHSIZE 512:
+```bash
+python -m src.evaluate --config configs/cnn_lstm_baseline.yaml --checkpoint experiments/cnn_lstm_baseline_20260512_062159/best_model.pth
+```
+For CNN_RESNET BATCHSIZE 512:
+```bash
+python -m src.evaluate --config configs/resnet1d_baseline.yaml --checkpoint experiments/resnet1d_baseline_20260513_004424/best_model.pth
+```
+
 
 Evaluation writes:
 

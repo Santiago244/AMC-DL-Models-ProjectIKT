@@ -1,32 +1,31 @@
 {
-  "experiment_name": "cnn1d_quick",
+  "experiment_name": "cnn_lstm_baseline",
   "model": {
-    "type": "cnn1d",
+    "type": "cnn_lstm",
     "num_classes": 24,
     "input_channels": 2,
-    "filters": 32,
-    "kernel_size": 3,
-    "dropout": 0.3,
-    "dense_units": 128
+    "conv_filters": 64,
+    "kernel_size": 5,
+    "lstm_hidden": 128,
+    "lstm_layers": 1,
+    "bidirectional": true,
+    "dropout": 0.4
   },
   "training": {
-    "batch_size": 256,
-    "epochs": 5,
+    "batch_size": 512,
+    "epochs": 50,
     "learning_rate": 0.001,
     "optimizer": "adam",
     "weight_decay": 0.0,
-    "early_stopping_patience": 3,
+    "early_stopping_patience": 10,
     "num_workers": 0,
-    "pin_memory": false
+    "pin_memory": true
   },
   "data": {
     "hdf5_path": "data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5",
     "split_path": "data/splits/radioml2018a_seed42_60_20_20.npz",
     "random_seed": 42,
-    "sample_normalize": false,
-    "max_train_samples": 60000,
-    "max_val_samples": 12000,
-    "max_test_samples": 12000
+    "sample_normalize": false
   },
   "output": {
     "experiments_dir": "experiments"

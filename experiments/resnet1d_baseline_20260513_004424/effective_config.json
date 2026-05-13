@@ -1,0 +1,34 @@
+{
+  "experiment_name": "resnet1d_baseline",
+  "model": {
+    "type": "resnet1d",
+    "num_classes": 24,
+    "input_channels": 2,
+    "base_channels": 64,
+    "layers": [
+      2,
+      2,
+      2
+    ],
+    "dropout": 0.4
+  },
+  "training": {
+    "batch_size": 512,
+    "epochs": 50,
+    "learning_rate": 0.001,
+    "optimizer": "adam",
+    "weight_decay": 0.0,
+    "early_stopping_patience": 10,
+    "num_workers": 0,
+    "pin_memory": true
+  },
+  "data": {
+    "hdf5_path": "data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5",
+    "split_path": "data/splits/radioml2018a_seed42_60_20_20.npz",
+    "random_seed": 42,
+    "sample_normalize": false
+  },
+  "output": {
+    "experiments_dir": "experiments"
+  }
+}
