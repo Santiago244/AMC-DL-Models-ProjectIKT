@@ -11,7 +11,7 @@
 clear; clc; close all;
 
 projectRoot = fileparts(fileparts(mfilename("fullpath")));
-experimentDir = fullfile(projectRoot, "experiments", "cnn1d_quick_20260417_071055");
+experimentDir = fullfile(projectRoot, "experiments", "cnn1d_baseline_20260511_180658");
 outputDir = fullfile(projectRoot, "visualizations", "current_experiment");
 
 if ~exist(outputDir, "dir")

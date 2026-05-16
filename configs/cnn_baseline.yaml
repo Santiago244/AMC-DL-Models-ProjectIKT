@@ -6,11 +6,11 @@ model:
   input_channels: 2
   filters: 64
   kernel_size: 3
-  dropout: 0.5
+  dropout: 0.4
   dense_units: 256
 
 training:
-  batch_size: 512
+  batch_size: 256
   epochs: 50
   learning_rate: 0.001
   optimizer: "adam"
@@ -20,8 +20,8 @@ training:
   pin_memory: true
 
 data:
-## DOEST EXITS IN THIS REMOTE COMPUTER, SINCE WE ALREADY MADE THE SPLIT IN OUR DEVICE.
-  hdf5_path: "data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5" 
+  ## DOEST EXITS IN THIS REMOTE COMPUTER, SINCE WE ALREADY MADE THE SPLIT IN OUR DEVICE.
+  hdf5_path: "data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5"
   split_path: "data/splits/radioml2018a_seed42_60_20_20.npz"
   random_seed: 42
   sample_normalize: false

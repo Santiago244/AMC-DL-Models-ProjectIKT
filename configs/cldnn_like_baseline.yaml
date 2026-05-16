@@ -1,16 +1,12 @@
-experiment_name: "cnn1d_low_dropout"
+experiment_name: "cldnn_like_baseline"
 
 model:
-  type: "cnn1d"
+  type: "cldnn_like"
   num_classes: 24
   input_channels: 2
-  filters: 64
-  kernel_size: 3
-  dropout: 0.3
-  dense_units: 256
 
 training:
-  batch_size: 512
+  batch_size: 256
   epochs: 50
   learning_rate: 0.001
   optimizer: "adam"

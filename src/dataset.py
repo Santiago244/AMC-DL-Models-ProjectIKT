@@ -137,8 +137,8 @@ def create_split_indices(
     hdf5_path: str | Path,
     output_path: str | Path = DEFAULT_SPLIT_PATH,
     train_split: float = 0.6, # 60% of the dataset for training
-    val_split: float = 0.2, # 60% of the dataset for training
-    test_split: float = 0.2,# 60% of the dataset for training
+    val_split: float = 0.2, # 20% of the dataset for training
+    test_split: float = 0.2,# 20% of the dataset for training
     random_seed: int = 42, # Random seed helps to ensure that the split is reproducible. Using the same seed will yield the same split. Reproducibility means that if someone else runs the same code with the same seed, they will get the same train/validation/test split, which is important for consistent results and fair comparisons.
     stratify_by_snr: bool = True, # Meaning we are going to split the different samples in the dataset based on both their modulation type and their SNR level. This is done to ensure that each split (train, validation, test) has a representative distribution of samples across different modulation types and SNR levels. By stratifying by both modulation and SNR, we can help ensure that the model is trained and evaluated on a diverse set of conditions, which can lead to better generalization performance.
 ) -> Path:

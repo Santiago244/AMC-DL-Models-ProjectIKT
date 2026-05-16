@@ -1,31 +1,25 @@
-experiment_name: "resnet1d_quick"
+experiment_name: "mcnet_baseline"
 
 model:
-  type: "resnet1d"
+  type: "mcnet"
   num_classes: 24
   input_channels: 2
-  base_channels: 32
-  layers: [1, 1, 1]
-  dropout: 0.1
 
 training:
   batch_size: 256
   epochs: 50
   learning_rate: 0.001
-  optimizer: "adamw"
-  weight_decay: 0.0001
-  early_stopping_patience: 3
+  optimizer: "adam"
+  weight_decay: 0.0
+  early_stopping_patience: 10
   num_workers: 0
-  pin_memory: false
+  pin_memory: true
 
 data:
   hdf5_path: "data/raw/radioml2018/GOLD_XYZ_OSC.0001_1024.hdf5"
   split_path: "data/splits/radioml2018a_seed42_60_20_20.npz"
   random_seed: 42
   sample_normalize: false
-  max_train_samples: 60000
-  max_val_samples: 12000
-  max_test_samples: 12000
 
 output:
   experiments_dir: "experiments"

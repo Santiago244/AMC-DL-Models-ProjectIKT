@@ -1,20 +1,16 @@
-experiment_name: "cnn1d_large_filters"
+experiment_name: "mcldnn_baseline"
 
 model:
-  type: "cnn1d"
+  type: "mcldnn"
   num_classes: 24
   input_channels: 2
-  filters: 128
-  kernel_size: 5
-  dropout: 0.5
-  dense_units: 512
 
 training:
-  batch_size: 512
+  batch_size: 256
   epochs: 50
-  learning_rate: 0.0005
-  optimizer: "adamw"
-  weight_decay: 0.0001
+  learning_rate: 0.001
+  optimizer: "adam"
+  weight_decay: 0.0
   early_stopping_patience: 10
   num_workers: 0
   pin_memory: true

@@ -171,7 +171,6 @@ def train(
     patience_counter = 0
     history: list[dict[str, float]] = []
     checkpoint_path = run_dir / "best_model.pth"
-
     for epoch in range(1, epochs + 1):
         train_metrics = run_epoch(
             model,
